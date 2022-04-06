@@ -15,8 +15,8 @@ lantency.
 The client load balance can handle IPs change behind DNS, IP unreachable. And also it will retry when request failure.
 
 ## Build
-This Client Load Balance uses Go modules for dependency management and requires Go 1.18+ to build.
-
+This Client Load Balance uses Go modules for dependency management and requires Go 1.13+ to build.
+s
 To build the binary:
 
 ``

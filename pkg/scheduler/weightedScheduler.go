@@ -113,12 +113,12 @@ func (d *Dispatcher) Run() {
 
     for key, v := range d.IPsMap {
         if v.RequestCount != 0 {
-            fmt.Println("IP:", key, "RequestCount:", v.RequestCount, "MinLatency:", 
+            fmt.Println("IP:", key, "RequestCount:", v.RequestCount, "MinLatency:",
                      v.MinLatency/(1000*1000), "ms MaxLatency:", v.MaxLatency/(1000*1000),
                      "ms AvgLatency:",(v.TotalLatency/(uint64)(v.RequestCount))/(1000*1000),
                      "ms desiredWorker:", v.DesiredWorders, "actualWorker:", v.ActualWorkers)
         } else {
-            fmt.Println("IP:", key, "RequestCount:", v.RequestCount, "MinLatency: N/A", 
+            fmt.Println("IP:", key, "RequestCount:", v.RequestCount, "MinLatency: N/A",
                         "MaxLatency: N/A", "AvgLatency: N/A",
                         "desiredWorker:", v.DesiredWorders, "actualWorker:", v.ActualWorkers)
         }
@@ -128,13 +128,17 @@ func (d *Dispatcher) Run() {
 func (d *Dispatcher) dispatch() {
     ipLen := len(d.IPs)
     refreshIPTimer := time.After(time.Duration(d.RefreshIPTime) * time.Millisecond)
+    waited := d.maxWorkers
+    existError := false
     for i:=0; i<d.TotalRequests; {
+        if existError {break}
         select {
             //get IPs from DNS again every 3 seconds
             case <- refreshIPTimer:
                 fmt.Println("refresh IP")
                 ips, err := getIps(d.URL)
                 if err != nil || len(ips) == 0 {
+                    existError = true
                     break;
                 }
 
@@ -172,21 +176,34 @@ func (d *Dispatcher) dispatch() {
                             }
                         }
                     } else {
-                        //service down, set the down server IP desired worker as 0
-                        d.IPsMap[workerData.IP].DesiredWorders = 0
-    
-                        //service down, get the IPs from URL again
-                        fmt.Println("refresh IP")
-                        ips, err := getIps(d.URL)
-                        if err != nil || len(ips) == 0 {
-                            break;
+                        // if desired worker is 0, it's already re assigned
+                        if d.IPsMap[workerData.IP].DesiredWorders != 0 {
+                            //service down, set the down server IP desired worker as 0
+                            d.IPsMap[workerData.IP].DesiredWorders = 0
+
+                            //service down, get the IPs from URL again
+                            fmt.Println("refresh IP")
+                            ips, err := getIps(d.URL)
+                            if err != nil || len(ips) == 0 {
+                                waited --
+                                existError = true
+                                break;
+                            }
+
+                            oldIPs := d.IPs
+                            d.IPs = ips
+
+                            //reassign desire workers to each IP
+                            d.reAssignIPWorkers(oldIPs)
                         }
-    
-                        oldIPs := d.IPs
-                        d.IPs = ips
-    
-                        //reassign desire workers to each IP
-                        d.reAssignIPWorkers(oldIPs)
+
+                        d.IPsMap[workerData.IP].ActualWorkers--
+
+                        choosedIP := d.chooseIPForWorker()
+                        if (choosedIP != "") {
+                            workerData.JobChannel <- types.Job{IP: choosedIP}
+                            d.IPsMap[choosedIP].ActualWorkers++
+                        }
                     }
                 }
             i++;
@@ -194,7 +211,7 @@ func (d *Dispatcher) dispatch() {
         }
     }
 
-    for i:=0; i<d.maxWorkers; {
+    for i:=0; i<waited; {
         select {
         case workerData := <-d.WorkerPool:
             if workerData.ServiceDown != true {
@@ -273,7 +290,7 @@ func (d *Dispatcher)reAssignIPWorkers(oldIPs []string) {
 func statServiceReq(ipsMap map[string]*IPData, ip string, latency uint64) {
 
     ipData := ipsMap[ip]
-    
+
     ipData.RequestCount++
     ipData.TotalLatency += latency
 
@@ -329,5 +346,6 @@ func getIps(url string) ([]string,error) {
     if len(ips) == 0 {
         fmt.Println("No IPs obtained for", url)
     }
+
     return ips, nil
 }

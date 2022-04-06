@@ -79,7 +79,7 @@ func serviceRequest(ip string, retryCount int, myClient *http.Client) (int64, bo
     serviceDown := true
 
     for i:=0; i<retryCount; i++ {
-    
+
         url := "http://" + ip
 
         response, err := myClient.Get(url)
@@ -94,7 +94,7 @@ func serviceRequest(ip string, retryCount int, myClient *http.Client) (int64, bo
         }
 
         io.Copy(ioutil.Discard, response.Body)
-   
+
         response.Body.Close()
 
         if response.StatusCode >= 200 && response.StatusCode <= 500 {
@@ -107,5 +107,4 @@ func serviceRequest(ip string, retryCount int, myClient *http.Client) (int64, bo
     duration := dur_time.Nanoseconds()
 
     return duration, serviceDown
-
 }

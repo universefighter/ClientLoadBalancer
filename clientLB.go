@@ -38,7 +38,7 @@ func main() {
     myClient = &http.Client{
                    Transport: t,
                    Timeout:   2 * time.Second,}
-    
+
     //worker.ServiceRequest("10.2.1.3",2, myClient)
     //return
 
